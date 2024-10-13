@@ -8,8 +8,8 @@ const stockHistorySchema = new mongoose.Schema({
 });
 
 const stockNeedToReceivedSchema = new mongoose.Schema({
-  quantity: { type: Number, required: true }, // Quantity expected to be received
-  dueDate: { type: Date, required: true }, // Due date when stock is expected to be received
+  quantity: { type: Number, required: true },
+  dueDate: { type: Date, required: true },
 });
 
 const inventorySchema = new mongoose.Schema({
