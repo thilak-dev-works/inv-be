@@ -59,6 +59,15 @@ if (config.env === 'production') {
 
 // v1 api routes
 app.use('/v1', routes);
+app.use((req, res, next) => {
+  res.status(404).json({
+    code: 404,
+    message: 'Not found'
+  });
+});
+app.get('/', (req, res) => {
+  res.send('Welcome to the API');
+});
 
 // send back a 404 error for any unknown api request
 app.use((req, res, next) => {
