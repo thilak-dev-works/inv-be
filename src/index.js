@@ -1,24 +1,41 @@
-/* eslint-disable no-console */
 const mongoose = require('mongoose');
 const app = require('./app');
 const config = require('./config/config');
 const logger = require('./config/logger');
 
-let isConnected; // Track MongoDB connection
+let server;
+mongoose.connect(config.mongoose.url, config.mongoose.options).then(() => {
+  logger.info('Connected to MongoDB');
+  server = app.listen(8000, () => {
+    logger.info(`Listening to port ${80}`);
+  });
+});
 
-async function connectToDatabase() {
-  if (isConnected) {
-    return;
+
+const exitHandler = () => {
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(1);
+    });
+  } else {
+    process.exit(1);
   }
-  await mongoose.connect(process.env.MONGODB_URI, config.mongoose.options);
-  isConnected = mongoose.connection.readyState === 1; // Set to true if connected
-  console.log('Connected to MongoDB');
-}
+};
 
-// Middleware to ensure MongoDB connection is established
-app.use(async (req, res, next) => {
-  await connectToDatabase();
-  next();
+const unexpectedErrorHandler = (error) => {
+  logger.error(error);
+  exitHandler();
+};
+
+process.on('uncaughtException', unexpectedErrorHandler);
+process.on('unhandledRejection', unexpectedErrorHandler);
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received');
+  if (server) {
+    server.close();
+  }
 });
 
 module.exports = app;
