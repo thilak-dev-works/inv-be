@@ -49,10 +49,9 @@ To verify your email, click on this link: ${verificationEmailUrl}
 If you did not create an account, then ignore this email.`;
   await sendEmail(to, subject, text);
 };
-
 module.exports = {
   // transport,
   sendEmail,
   sendResetPasswordEmail,
-  sendVerificationEmail,
+  sendVerificationEmail
 };
