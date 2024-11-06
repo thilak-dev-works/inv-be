@@ -4,13 +4,21 @@ const config = require('./config/config');
 const logger = require('./config/logger');
 
 let server;
-mongoose.connect(config.mongoose.url, config.mongoose.options).then(() => {
-  logger.info('Connected to MongoDB');
-  server = app.listen(8000, () => {
-    logger.info(`Listening to port ${80}`);
-  });
-});
 
+// Only start the server if running locally
+if (process.env.NODE_ENV !== 'production') {
+  mongoose.connect(config.mongoose.url, config.mongoose.options).then(() => {
+    logger.info('Connected to MongoDB');
+    server = app.listen(8000, () => {
+      logger.info(`Listening to port 8000`);
+    });
+  });
+}
+
+// Export the app for Vercel
+module.exports = app;
+
+// Graceful shutdown handlers
 const exitHandler = () => {
   if (server) {
     server.close(() => {
