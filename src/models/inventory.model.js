@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const productRequestSchema = new mongoose.Schema({
+  requestBy: { type: String, required: true },
+  requestedOn: { type: Date, default: Date.now },
+});
+
 const stockHistorySchema = new mongoose.Schema({
   change: { type: Number, required: true },
   updatedBy: { type: String, required: true },
@@ -25,6 +30,7 @@ const inventorySchema = new mongoose.Schema({
   status: { type: Boolean, default: true },
   stockHistory: [stockHistorySchema],
   stockNeedToReceived: stockNeedToReceivedSchema,
+  productRequests: [productRequestSchema],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

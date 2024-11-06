@@ -18,10 +18,24 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.get('/inventory-with-requests', async (req, res) => {
+  try {
+    const itemsWithRequests = await Inventory.find({ 'productRequests.0': { $exists: true } });
+
+    if (!itemsWithRequests.length) {
+      return res.status(404).json({ message: 'No inventory items with product requests found' });
+    }
+
+    res.json(itemsWithRequests);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/stock-history', async (req, res) => {
   try {
     // Find all inventory items and select only necessary fields
-    const allItems = await Inventory.find({}, 'name category status stockHistory');
+    const allItems = await Inventory.find({}, 'name category status stockHistory images stock sku');
 
     // Aggregate all stock histories into a single array with additional fields
     const allStockHistory = [];
@@ -34,7 +48,11 @@ router.get('/stock-history', async (req, res) => {
           change: history.change,
           updatedBy: history.updatedBy,
           reason: history.reason,
-          date: history.date,
+          date: new Date(history.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), // Format date
+          images: item.images,
+          stock: item.stock,
+          _id: history._id,
+          sku: item.sku,
         });
       });
     });
@@ -50,7 +68,7 @@ router.get('/stock-history', async (req, res) => {
 
 router.get('/stock-out', async (req, res) => {
   try {
-    const stockOutItems = await Inventory.find({ stock: 0 }, 'name category status stock');
+    const stockOutItems = await Inventory.find({ stock: 0 }, 'name category status stock sku images');
 
     if (stockOutItems.length === 0) {
       return res.status(404).json({ message: 'No stock out products found' });
@@ -182,7 +200,7 @@ router.put('/sku/:sku/update-stock', async (req, res) => {
     }
 
     // Update the stock
-    item.stock = change;
+    item.stock += change;
 
     // Record the stock change in the history
     item.stockHistory.push({
@@ -214,6 +232,24 @@ router.put('/sku/:sku/update-stock-received', async (req, res) => {
     item.stockNeedToReceived = { quantity, dueDate };
 
     // Save the updated item
+    await item.save();
+    res.json(item);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/sku/:sku/add-request', async (req, res) => {
+  try {
+    const { requestBy } = req.body;
+    const item = await Inventory.findOne({ sku: req.params.sku });
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+    item.productRequests.push({
+      requestBy,
+      requestedOn: new Date(),
+    });
     await item.save();
     res.json(item);
   } catch (error) {
