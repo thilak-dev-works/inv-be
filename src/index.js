@@ -1,23 +1,18 @@
+/* eslint-disable no-undef */
+/* eslint-disable no-console */
 const mongoose = require('mongoose');
 const app = require('./app');
 const config = require('./config/config');
 const logger = require('./config/logger');
 
-let server;
-const uri =
-  'mongodb+srv://thilaksubramani17:kNmNuGsQ9OfvisQ7@thilak17.boal2.mongodb.net/?authSource=admin&replicaSet=atlas-gvvwy9-shard-0&retryWrites=true&w=majority&appName=thilak17%2Fbestingems';
+const uri = config.mongoose.url; // Use environment variable for URI
 
-// Only start the server if running locally
-if (process.env.NODE_ENV !== 'production') {
-  mongoose.connect(uri, config.mongoose.options).then(() => {
-    logger.info('Connected to MongoDB');
-    server = app.listen(8000, () => {
-      logger.info('Listening to port 8000');
-    });
-  });
-}
+mongoose
+  .connect(uri, config.mongoose.options)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch((err) => console.error('MongoDB connection error:', err));
 
-// Export the app for Vercel
+// Export the app for serverless deployment
 module.exports = app;
 
 // Graceful shutdown handlers
