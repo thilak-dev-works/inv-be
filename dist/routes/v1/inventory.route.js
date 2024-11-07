@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /* eslint-disable radix */
 // routes/inventory.js
 const express = require('express');
@@ -24,76 +23,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS
   }
 });
-router.put('/sku/:sku/change-status', async (req, res) => {
-  const {
-    status
-  } = req.body;
-  try {
-    if (typeof status !== 'boolean') {
-      return res.status(400).json({
-        message: "Please provide 'status' as true or false."
-      });
-    }
-    const result = await Inventory.findOneAndUpdate({
-      sku: req.params.sku
-    }, {
-      $set: {
-        status
-      }
-    }, {
-      new: true
-    });
-    if (!result) {
-      return res.status(404).json({
-        message: 'Inventory item not found with the specified SKU.'
-      });
-    }
-    res.json({
-      message: 'Status updated successfully',
-      updatedInventory: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: 'Server error while updating status'
-    });
-  }
-});
-router.put('/sku/:sku/remove-request', async (req, res) => {
-  const {
-    requestId
-  } = req.body;
-  try {
-    if (!requestId) {
-      return res.status(400).json({
-        message: "Please provide 'requestId'."
-      });
-    }
-    const result = await Inventory.findOneAndUpdate({
-      sku: req.params.sku
-    }, {
-      $pull: {
-        productRequests: {
-          _id: requestId
-        }
-      }
-    }, {
-      new: true
-    });
-    if (!result) {
-      return res.status(404).json({
-        message: 'Inventory item not found with the specified SKU.'
-      });
-    }
-    res.json({
-      message: 'Request removed successfully',
-      updatedInventory: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: 'Server error while removing request'
-    });
-  }
-});
 router.put('/set-alert', async (req, res) => {
   const {
     sku,
@@ -101,11 +30,14 @@ router.put('/set-alert', async (req, res) => {
     higherThan
   } = req.body;
   try {
+    // Validate inputs
     if (!sku || typeof lowerThan !== 'number' && typeof higherThan !== 'number') {
       return res.status(400).json({
         message: "Please provide 'sku' and at least one of 'lowerThan' or 'higherThan' thresholds."
       });
     }
+
+    // Find and update the alert thresholds
     const result = await Inventory.findOneAndUpdate({
       sku
     }, {
@@ -126,11 +58,14 @@ router.put('/set-alert', async (req, res) => {
       updatedInventory: result
     });
   } catch (error) {
+    console.error('Error setting alert thresholds:', error);
     res.status(500).json({
       message: 'Server error while setting alert thresholds'
     });
   }
 });
+
+// Helper function to send an email alert
 async function sendAlertEmail(subject, message) {
   try {
     await transporter.sendMail({
@@ -206,6 +141,76 @@ router.put('/api/inventory/sell', async (req, res) => {
     console.error('Error updating sold history:', error);
     res.status(500).json({
       message: 'Server error while updating sold history'
+    });
+  }
+});
+router.put('/sku/:sku/change-status', async (req, res) => {
+  const {
+    status
+  } = req.body;
+  try {
+    if (typeof status !== 'boolean') {
+      return res.status(400).json({
+        message: "Please provide 'status' as true or false."
+      });
+    }
+    const result = await Inventory.findOneAndUpdate({
+      sku: req.params.sku
+    }, {
+      $set: {
+        status
+      }
+    }, {
+      new: true
+    });
+    if (!result) {
+      return res.status(404).json({
+        message: 'Inventory item not found with the specified SKU.'
+      });
+    }
+    res.json({
+      message: 'Status updated successfully',
+      updatedInventory: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Server error while updating status'
+    });
+  }
+});
+router.put('/sku/:sku/remove-request', async (req, res) => {
+  const {
+    requestId
+  } = req.body;
+  try {
+    if (!requestId) {
+      return res.status(400).json({
+        message: "Please provide 'requestId'."
+      });
+    }
+    const result = await Inventory.findOneAndUpdate({
+      sku: req.params.sku
+    }, {
+      $pull: {
+        productRequests: {
+          _id: requestId
+        }
+      }
+    }, {
+      new: true
+    });
+    if (!result) {
+      return res.status(404).json({
+        message: 'Inventory item not found with the specified SKU.'
+      });
+    }
+    res.json({
+      message: 'Request removed successfully',
+      updatedInventory: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Server error while removing request'
     });
   }
 });
