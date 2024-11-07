@@ -27,6 +27,20 @@ const stockHistorySchema = new mongoose.Schema({
     default: Date.now
   }
 });
+const soldHistorySchema = new mongoose.Schema({
+  date: {
+    type: Date,
+    required: true
+  },
+  orderid: {
+    type: String,
+    required: true
+  },
+  stockselled: {
+    type: Number,
+    required: true
+  }
+});
 const stockNeedToReceivedSchema = new mongoose.Schema({
   quantity: {
     type: Number,
@@ -78,6 +92,7 @@ const inventorySchema = new mongoose.Schema({
   },
   stockHistory: [stockHistorySchema],
   stockNeedToReceived: stockNeedToReceivedSchema,
+  soldHistory: [soldHistorySchema],
   productRequests: [productRequestSchema],
   createdAt: {
     type: Date,
@@ -86,6 +101,20 @@ const inventorySchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
+  },
+  lowerThan: {
+    type: Number
+  },
+  higherThan: {
+    type: Number
+  },
+  reorderPoint: {
+    type: Number,
+    default: 0
+  },
+  reorderQuantity: {
+    type: Number,
+    default: 0
   }
 });
 module.exports = mongoose.model('Inventory', inventorySchema);

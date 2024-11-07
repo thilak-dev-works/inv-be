@@ -1,10 +1,255 @@
+/* eslint-disable no-console */
 /* eslint-disable radix */
 // routes/inventory.js
 const express = require('express');
+const multer = require('multer');
+const csv = require('csv-parser');
+const fs = require('fs');
+const path = require('path');
+const nodemailer = require('nodemailer');
+require('dotenv').config();
 const router = express.Router();
 const Inventory = require('../../models/inventory.model');
 const LOW_STOCK_THRESHOLD = 10;
 const HIGH_STOCK_THRESHOLD = 14;
+const upload = multer({
+  dest: 'uploads/'
+});
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  }
+});
+router.put('/sku/:sku/change-status', async (req, res) => {
+  const {
+    status
+  } = req.body;
+  try {
+    if (typeof status !== 'boolean') {
+      return res.status(400).json({
+        message: "Please provide 'status' as true or false."
+      });
+    }
+    const result = await Inventory.findOneAndUpdate({
+      sku: req.params.sku
+    }, {
+      $set: {
+        status
+      }
+    }, {
+      new: true
+    });
+    if (!result) {
+      return res.status(404).json({
+        message: 'Inventory item not found with the specified SKU.'
+      });
+    }
+    res.json({
+      message: 'Status updated successfully',
+      updatedInventory: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Server error while updating status'
+    });
+  }
+});
+router.put('/sku/:sku/remove-request', async (req, res) => {
+  const {
+    requestId
+  } = req.body;
+  try {
+    if (!requestId) {
+      return res.status(400).json({
+        message: "Please provide 'requestId'."
+      });
+    }
+    const result = await Inventory.findOneAndUpdate({
+      sku: req.params.sku
+    }, {
+      $pull: {
+        productRequests: {
+          _id: requestId
+        }
+      }
+    }, {
+      new: true
+    });
+    if (!result) {
+      return res.status(404).json({
+        message: 'Inventory item not found with the specified SKU.'
+      });
+    }
+    res.json({
+      message: 'Request removed successfully',
+      updatedInventory: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Server error while removing request'
+    });
+  }
+});
+router.put('/set-alert', async (req, res) => {
+  const {
+    sku,
+    lowerThan,
+    higherThan
+  } = req.body;
+  try {
+    if (!sku || typeof lowerThan !== 'number' && typeof higherThan !== 'number') {
+      return res.status(400).json({
+        message: "Please provide 'sku' and at least one of 'lowerThan' or 'higherThan' thresholds."
+      });
+    }
+    const result = await Inventory.findOneAndUpdate({
+      sku
+    }, {
+      $set: {
+        lowerThan,
+        higherThan
+      }
+    }, {
+      new: true
+    });
+    if (!result) {
+      return res.status(404).json({
+        message: 'Inventory item not found with the specified SKU.'
+      });
+    }
+    res.json({
+      message: 'Alert thresholds set successfully',
+      updatedInventory: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Server error while setting alert thresholds'
+    });
+  }
+});
+async function sendAlertEmail(subject, message) {
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: process.env.ALERT_EMAIL,
+      subject,
+      text: message
+    });
+  } catch (error) {
+    console.error('Error sending alert email:', error);
+  }
+}
+
+// Modified /api/inventory/sell API to check alert thresholds
+router.put('/api/inventory/sell', async (req, res) => {
+  const {
+    sku,
+    date,
+    orderid,
+    stockselled
+  } = req.body;
+  try {
+    // Validate inputs
+    if (!sku || !orderid || typeof stockselled !== 'number') {
+      return res.status(400).json({
+        message: "Please provide 'sku', 'orderid', and 'stockselled'."
+      });
+    }
+
+    // Set the date to the current date if it's not provided
+    const saleDate = date ? new Date(date) : new Date();
+
+    // Find the inventory item by SKU and update the sold history and stock
+    const result = await Inventory.findOneAndUpdate({
+      sku
+    }, {
+      $push: {
+        soldHistory: {
+          date: saleDate,
+          orderid,
+          stockselled
+        }
+      },
+      $inc: {
+        stock: -stockselled
+      }
+    }, {
+      new: true
+    });
+    if (!result) {
+      return res.status(404).json({
+        message: 'Inventory item not found with the specified SKU.'
+      });
+    }
+
+    // Check if the updated stock level triggers any alerts
+    const {
+      stock,
+      lowerThan,
+      higherThan
+    } = result;
+    if (lowerThan !== undefined && stock < lowerThan) {
+      await sendAlertEmail(`Low Stock Alert for SKU: ${sku}`, `The stock for SKU ${sku} has fallen below the set threshold of ${lowerThan}. Current stock: ${stock}`);
+    }
+    if (higherThan !== undefined && stock > higherThan) {
+      await sendAlertEmail(`High Stock Alert for SKU: ${sku}`, `The stock for SKU ${sku} has exceeded the set threshold of ${higherThan}. Current stock: ${stock}`);
+    }
+    res.json({
+      message: 'Stock sold history updated successfully',
+      updatedInventory: result
+    });
+  } catch (error) {
+    console.error('Error updating sold history:', error);
+    res.status(500).json({
+      message: 'Server error while updating sold history'
+    });
+  }
+});
+router.put('/set-reorder', async (req, res) => {
+  const {
+    sku,
+    reorderPoint,
+    reorderQuantity
+  } = req.body;
+  try {
+    // Validate inputs
+    if (!sku || typeof reorderPoint !== 'number' || typeof reorderQuantity !== 'number') {
+      return res.status(400).json({
+        message: "Please provide 'sku', 'reorderPoint', and 'reorderQuantity'."
+      });
+    }
+
+    // Find and update the reorder details
+    const result = await Inventory.findOneAndUpdate({
+      sku
+    }, {
+      $set: {
+        reorderPoint,
+        reorderQuantity
+      }
+    }, {
+      new: true
+    });
+    if (!result) {
+      return res.status(404).json({
+        message: 'Inventory item not found with the specified SKU.'
+      });
+    }
+    res.json({
+      message: 'Reorder details set successfully',
+      updatedInventory: result
+    });
+  } catch (error) {
+    console.error('Error setting reorder details:', error);
+    res.status(500).json({
+      message: 'Server error while setting reorder details'
+    });
+  }
+});
 
 // Create a new inventory item
 router.post('/', async (req, res) => {
@@ -15,6 +260,169 @@ router.post('/', async (req, res) => {
   } catch (error) {
     res.status(400).json({
       message: error.message
+    });
+  }
+});
+router.post('/csv/update-stock', upload.single('file'), async (req, res) => {
+  const filePath = req.file.path;
+  const updates = [];
+  fs.createReadStream(filePath).pipe(csv()).on('data', row => {
+    updates.push({
+      sku: row.SKU,
+      quantity: parseInt(row.Quantity, 10)
+    });
+  }).on('end', async () => {
+    const bulkOps = updates.map(item => ({
+      updateOne: {
+        filter: {
+          sku: item.sku
+        },
+        update: {
+          $inc: {
+            stock: item.quantity
+          }
+        }
+      }
+    }));
+    try {
+      await Inventory.bulkWrite(bulkOps);
+      fs.unlinkSync(filePath);
+      res.json({
+        message: 'Stock updated successfully'
+      });
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      res.status(500).json({
+        message: 'Error updating stock'
+      });
+    }
+  });
+});
+router.get('/download-sample-csv', (req, res) => {
+  const filePath = path.join(__dirname, 'sample.csv');
+  res.download(filePath, 'sample.csv', err => {
+    if (err) {
+      console.error('Error downloading sample file:', err);
+      res.status(500).json({
+        message: 'Error downloading sample file'
+      });
+    }
+  });
+});
+router.put('/deactivate', async (req, res) => {
+  const {
+    ids,
+    skus
+  } = req.body;
+  try {
+    // Check if either 'ids' or 'skus' array is provided
+    if ((!ids || ids.length === 0) && (!skus || skus.length === 0)) {
+      return res.status(400).json({
+        message: "Please provide either 'ids' or 'skus' to update records."
+      });
+    }
+
+    // Build the update filter based on the provided parameters
+    const updateFilter = {
+      $or: []
+    };
+    if (ids && ids.length > 0) {
+      updateFilter.$or.push({
+        _id: {
+          $in: ids.map(id => mongoose.Types.ObjectId(id))
+        }
+      });
+    }
+    if (skus && skus.length > 0) {
+      updateFilter.$or.push({
+        sku: {
+          $in: skus
+        }
+      });
+    }
+
+    // Perform the update operation to set status to false
+    const result = await Inventory.updateMany(updateFilter, {
+      $set: {
+        status: false
+      }
+    });
+    res.json({
+      message: 'Records updated successfully',
+      modifiedCount: result.modifiedCount
+    });
+  } catch (error) {
+    console.error('Error updating records:', error);
+    res.status(500).json({
+      message: 'Server error while updating records'
+    });
+  }
+});
+router.get('/price-summary', async (req, res) => {
+  try {
+    const inventoryPriceSummary = await Inventory.aggregate([{
+      $group: {
+        _id: '$category',
+        stockTotal: {
+          $sum: '$stock'
+        },
+        stockTotalPrice: {
+          $sum: {
+            $multiply: ['$stock', '$price']
+          }
+        },
+        StockToBeReceivedTotal: {
+          $sum: '$stockNeedToReceived.quantity'
+        },
+        StockToBeReceivedTotalPrice: {
+          $sum: {
+            $multiply: ['$stockNeedToReceived.quantity', '$price']
+          }
+        }
+      }
+    }, {
+      $project: {
+        _id: 0,
+        category: '$_id',
+        stockTotal: 1,
+        stockTotalPrice: 1,
+        StockToBeReceivedTotal: 1,
+        StockToBeReceivedTotalPrice: 1
+      }
+    }, {
+      $group: {
+        _id: null,
+        categories: {
+          $push: '$$ROOT'
+        },
+        overAllStockTotal: {
+          $sum: '$stockTotal'
+        },
+        overAllStockTotalPrice: {
+          $sum: '$stockTotalPrice'
+        },
+        overAllStockToBeReceivedTotal: {
+          $sum: '$StockToBeReceivedTotal'
+        },
+        overAllStockToBeReceivedTotalPrice: {
+          $sum: '$StockToBeReceivedTotalPrice'
+        }
+      }
+    }, {
+      $project: {
+        _id: 0,
+        categories: 1,
+        overAllStockTotal: 1,
+        overAllStockTotalPrice: 1,
+        overAllStockToBeReceivedTotal: 1,
+        overAllStockToBeReceivedTotalPrice: 1
+      }
+    }]);
+    res.json(inventoryPriceSummary[0]);
+  } catch (error) {
+    console.error('Error fetching inventory price summary:', error);
+    res.status(500).json({
+      message: 'Server error while fetching inventory price summary'
     });
   }
 });
