@@ -18,6 +18,33 @@ router.post('/', async (req, res) => {
     });
   }
 });
+router.get('/summary', async (req, res) => {
+  try {
+    const inventorySummary = await Inventory.aggregate([{
+      $group: {
+        _id: '$category',
+        stockTotal: {
+          $sum: '$stock'
+        },
+        StockToBeReceivedTotal: {
+          $sum: '$stockNeedToReceived.quantity'
+        }
+      }
+    }, {
+      $project: {
+        _id: 0,
+        category: '$_id',
+        stockTotal: 1,
+        StockToBeReceivedTotal: 1
+      }
+    }]);
+    res.json(inventorySummary);
+  } catch (error) {
+    res.status(500).json({
+      message: 'Server error while fetching inventory summary'
+    });
+  }
+});
 router.get('/inventory-with-requests', async (req, res) => {
   try {
     const itemsWithRequests = await Inventory.find({
