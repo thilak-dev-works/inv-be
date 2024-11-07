@@ -13,7 +13,8 @@ const Inventory = require('../../models/inventory.model');
 
 const LOW_STOCK_THRESHOLD = 10;
 const HIGH_STOCK_THRESHOLD = 14;
-const upload = multer({ dest: 'uploads/' });
+// const upload = multer({ dest: 'uploads/' });
+const upload = multer({ storage: multer.memoryStorage() });
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -185,9 +186,12 @@ router.post('/', async (req, res) => {
 });
 
 router.post('/csv/update-stock', upload.single('file'), async (req, res) => {
-  const filePath = req.file.path;
+  // Access the uploaded file from memory
+  const fileBuffer = req.file.buffer; // Buffer containing the uploaded file
   const updates = [];
-  fs.createReadStream(filePath)
+
+  // Parse the CSV data from the buffer
+  fs.createReadStream(fileBuffer) // You might need to use a different method here
     .pipe(csv())
     .on('data', (row) => {
       updates.push({
@@ -205,7 +209,6 @@ router.post('/csv/update-stock', upload.single('file'), async (req, res) => {
 
       try {
         await Inventory.bulkWrite(bulkOps);
-        fs.unlinkSync(filePath);
         res.json({ message: 'Stock updated successfully' });
       } catch (error) {
         console.error('Error updating stock:', error);
