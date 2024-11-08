@@ -435,9 +435,28 @@ router.get('/', async (req, res) => {
  */
 router.get('/low-stock', async (req, res) => {
   try {
-    // Find all items with stock less than the LOW_STOCK_THRESHOLD
     const lowStockItems = await Inventory.find({ stock: { $lt: LOW_STOCK_THRESHOLD } });
-    res.json(lowStockItems);
+
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    const lowStockItemsWithMonthlyTotalSold = lowStockItems.map((item) => {
+      // Calculate the total sold quantity from soldHistory for the current month
+      const monthlyTotalSold = item.soldHistory.reduce((acc, sale) => {
+        const saleDate = new Date(sale.date);
+        if (saleDate.getMonth() === currentMonth && saleDate.getFullYear() === currentYear) {
+          return acc + sale.stockselled;
+        }
+        return acc;
+      }, 0);
+
+      return {
+        ...item.toObject(),
+        monthlyTotalSold,
+      };
+    });
+
+    res.json(lowStockItemsWithMonthlyTotalSold);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
