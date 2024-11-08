@@ -1,9 +1,6 @@
 /* eslint-disable radix */
 // routes/inventory.js
 const express = require('express');
-const multer = require('multer');
-const csv = require('csv-parser');
-const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
@@ -11,11 +8,6 @@ const router = express.Router();
 const Inventory = require('../../models/inventory.model');
 const LOW_STOCK_THRESHOLD = 10;
 const HIGH_STOCK_THRESHOLD = 14;
-const upload = multer({
-  dest: 'utils/'
-});
-// const upload = multer({ storage: multer.memoryStorage() });
-
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT,
@@ -270,43 +262,40 @@ router.post('/', async (req, res) => {
     });
   }
 });
-router.post('/csv/update-stock', upload.single('file'), async (req, res) => {
-  // Access the uploaded file from memory
-  const fileBuffer = req.file.buffer; // Buffer containing the uploaded file
-  const updates = [];
+router.post('/json/update-stock', async (req, res) => {
+  const updates = req.body; // Expecting an array of objects
 
-  // Parse the CSV data from the buffer
-  fs.createReadStream(fileBuffer) // You might need to use a different method here
-  .pipe(csv()).on('data', row => {
-    updates.push({
-      sku: row.SKU,
-      quantity: parseInt(row.Quantity, 10)
+  // Validate the JSON structure
+  if (!Array.isArray(updates)) {
+    return res.status(400).json({
+      message: 'Invalid data format. Expected an array of objects.'
     });
-  }).on('end', async () => {
-    const bulkOps = updates.map(item => ({
-      updateOne: {
-        filter: {
-          sku: item.sku
-        },
-        update: {
-          $inc: {
-            stock: item.quantity
-          }
+  }
+
+  // Create bulk operations based on the JSON data
+  const bulkOps = updates.map(item => ({
+    updateOne: {
+      filter: {
+        sku: item.SKU
+      },
+      update: {
+        $inc: {
+          stock: parseInt(item.Quantity, 10)
         }
       }
-    }));
-    try {
-      await Inventory.bulkWrite(bulkOps);
-      res.json({
-        message: 'Stock updated successfully'
-      });
-    } catch (error) {
-      console.error('Error updating stock:', error);
-      res.status(500).json({
-        message: 'Error updating stock'
-      });
     }
-  });
+  }));
+  try {
+    await Inventory.bulkWrite(bulkOps);
+    res.json({
+      message: 'Stock updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating stock:', error);
+    res.status(500).json({
+      message: 'Error updating stock'
+    });
+  }
 });
 router.get('/download-sample-csv', (req, res) => {
   const filePath = path.join(__dirname, 'sample.csv');
