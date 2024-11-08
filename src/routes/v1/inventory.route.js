@@ -13,8 +13,8 @@ const Inventory = require('../../models/inventory.model');
 
 const LOW_STOCK_THRESHOLD = 10;
 const HIGH_STOCK_THRESHOLD = 14;
-// const upload = multer({ dest: 'uploads/' });
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ dest: 'utils/' });
+// const upload = multer({ storage: multer.memoryStorage() });
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
